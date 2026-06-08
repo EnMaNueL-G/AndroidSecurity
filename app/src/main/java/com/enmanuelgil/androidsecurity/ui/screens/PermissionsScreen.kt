@@ -69,7 +69,7 @@ fun PermissionsScreen(vm: PermissionsViewModel = viewModel()) {
                     color = MaterialTheme.colorScheme.primary
                 )
                 StatChip(
-                    value = apps.count { it.riskLevel == RiskLevel.HIGH && !it.isSystem }.toString(),
+                    value = apps.count { it.riskLevel == RiskLevel.HIGH }.toString(),
                     label = "Alto riesgo",
                     color = Color(0xFFEF5B5B)
                 )
@@ -81,17 +81,21 @@ fun PermissionsScreen(vm: PermissionsViewModel = viewModel()) {
             }
         }
 
-        // Filter chips
+        // Filter chips — stringResource must be called in composable scope, not inside LazyListScope
+        val filterAll    = stringResource(R.string.perm_filter_all)
+        val filterHigh   = stringResource(R.string.perm_filter_high)
+        val filterMedium = stringResource(R.string.perm_filter_medium)
+        val filterSystem = stringResource(R.string.perm_filter_system)
+        val filters = listOf(
+            "all"    to filterAll,
+            "high"   to filterHigh,
+            "medium" to filterMedium,
+            "system" to filterSystem
+        )
         LazyRow(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val filters = listOf(
-                "all"    to stringResource(R.string.perm_filter_all),
-                "high"   to stringResource(R.string.perm_filter_high),
-                "medium" to stringResource(R.string.perm_filter_medium),
-                "system" to stringResource(R.string.perm_filter_system)
-            )
             items(filters) { (key, label) ->
                 FilterChip(
                     selected = filter == key,

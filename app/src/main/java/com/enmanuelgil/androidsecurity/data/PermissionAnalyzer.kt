@@ -2,11 +2,11 @@ package com.enmanuelgil.androidsecurity.data
 
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
+import android.app.usage.UsageStatsManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
 import android.os.Build
 import android.provider.Settings
 import com.enmanuelgil.androidsecurity.model.*
@@ -59,6 +59,52 @@ object PermissionAnalyzer {
         else                                       -> PermCategory.OTHER
     }
 
+    // ── Reflection helper for hidden getPackagesForOps ─
+    @Suppress("UNCHECKED_CAST")
+    private fun getPackagesForOpsReflect(appOps: AppOpsManager, op: String): List<Any> {
+        return try {
+            val method = appOps.javaClass.getMethod("getPackagesForOps", Array<String>::class.java)
+            (method.invoke(appOps, arrayOf(op)) as? List<*>)?.filterNotNull() ?: emptyList()
+        } catch (e: Exception) { emptyList() }
+    }
+
+    private fun getPackageName(pkgOp: Any): String? = try {
+        pkgOp.javaClass.getMethod("getPackageName").invoke(pkgOp) as? String
+    } catch (e: Exception) { null }
+
+    private fun getOps(pkgOp: Any): List<Any> = try {
+        @Suppress("UNCHECKED_CAST")
+        (pkgOp.javaClass.getMethod("getOps").invoke(pkgOp) as? List<*>)?.filterNotNull() ?: emptyList()
+    } catch (e: Exception) { emptyList() }
+
+    // Android 10 (API 29)+ replaced getTime() with getLastAccessTime(int flags).
+    // OP_FLAGS_ALL_TRUSTED = 0x0b, OP_FLAGS_ALL = 0x1f — pass ALL to get any recorded access.
+    private fun getLastAccessTime(opEntry: Any): Long = try {
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                opEntry.javaClass
+                    .getMethod("getLastAccessTime", Int::class.javaPrimitiveType)
+                    .invoke(opEntry, 0x1f) as? Long ?: 0L
+            } catch (_: Exception) {
+                opEntry.javaClass.getMethod("getLastAccessTime").invoke(opEntry) as? Long ?: 0L
+            }
+        } else {
+            opEntry.javaClass.getMethod("getTime").invoke(opEntry) as? Long ?: 0L
+        }
+    } catch (e: Exception) { 0L }
+
+    private fun getLastDuration(opEntry: Any): Long = try {
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                opEntry.javaClass
+                    .getMethod("getLastDuration", Int::class.javaPrimitiveType)
+                    .invoke(opEntry, 0x1f) as? Long ?: 0L
+            } catch (_: Exception) {
+                opEntry.javaClass.getMethod("getLastDuration").invoke(opEntry) as? Long ?: 0L
+            }
+        } else 0L
+    } catch (e: Exception) { 0L }
+
     // ── Scan all installed apps ────────────────────────
     fun getAppPermissions(context: Context): List<AppPermissionInfo> {
         val pm = context.packageManager
@@ -74,8 +120,7 @@ object PermissionAnalyzer {
 
         return packages.mapNotNull { pkg ->
             val requestedPerms = pkg.requestedPermissions ?: return@mapNotNull null
-            val grantedDangerous = requestedPerms.filterIndexed { i, perm ->
-                // Only show permissions that are granted and are dangerous/signature
+            val grantedDangerous = requestedPerms.filter { perm ->
                 perm in HIGH_RISK || perm in MEDIUM_RISK
             }
             if (grantedDangerous.isEmpty()) return@mapNotNull null
@@ -99,7 +144,7 @@ object PermissionAnalyzer {
                 riskLevel   = riskLevel,
                 isSystem    = isSystem
             )
-        }.sortedWith(compareBy({ it.riskLevel.order }, { it.appName }))
+        }.sortedWith(compareBy({ it.riskLevel.order }, { it.isSystem }, { it.appName }))
     }
 
     // ── Detect threats ─────────────────────────────────
@@ -187,121 +232,93 @@ object PermissionAnalyzer {
     }
 
     // ── Camera / Microphone access history ─────────────
+    // Uses UsageStatsManager (requires PACKAGE_USAGE_STATS) — Android 12+ blocked the
+    // hidden getPackagesForOps API, so UsageStats is the only reliable public approach.
     fun getCamMicAccesses(context: Context): List<SensorAccessEntry> {
-        val results = mutableListOf<SensorAccessEntry>()
-        val pm = context.packageManager
+        val pm  = context.packageManager
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
+        val windowMs = 30L * 24 * 60 * 60 * 1000L
 
-        try {
-            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val camOp  = AppOpsManager.OPSTR_CAMERA
-            val micOp  = AppOpsManager.OPSTR_RECORD_AUDIO
-            val now    = System.currentTimeMillis()
-            val dayMs  = 24 * 60 * 60 * 1000L
+        val statsMap = try {
+            usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - windowMs, now)
+                ?.filter { it.lastTimeUsed > 0L }
+                ?.groupBy { it.packageName }
+                ?.mapValues { (_, list) -> list.maxByOrNull { it.lastTimeUsed }!! }
+        } catch (e: Exception) { null } ?: return emptyList()
 
-            // Map: packageName → (camTime, micTime, camCount, micCount)
-            val map = mutableMapOf<String, LongArray>() // [camLast, micLast, camCnt, micCnt]
+        return statsMap.values.mapNotNull { stat ->
+            val pkg    = stat.packageName
+            val hasCam = pm.checkPermission("android.permission.CAMERA", pkg) ==
+                         PackageManager.PERMISSION_GRANTED
+            val hasMic = pm.checkPermission("android.permission.RECORD_AUDIO", pkg) ==
+                         PackageManager.PERMISSION_GRANTED
+            if (!hasCam && !hasMic) return@mapNotNull null
 
-            listOf(camOp to 0, micOp to 1).forEach { (op, idx) ->
-                @Suppress("DEPRECATION")
-                val pkgOps: List<AppOpsManager.PackageOps> = try {
-                    appOps.getPackagesForOps(arrayOf(op))
-                } catch (e: Exception) { emptyList() }
-
-                pkgOps.forEach { pkgOp ->
-                    val pkg = pkgOp.packageName
-                    pkgOp.ops.forEach { opEntry ->
-                        val last = if (Build.VERSION.SDK_INT >= 29) opEntry.lastAccessTime
-                                   else @Suppress("DEPRECATION") opEntry.time
-                        if (last > 0 && (now - last) < dayMs * 30) {
-                            val entry = map.getOrPut(pkg) { LongArray(4) }
-                            if (idx == 0) {
-                                entry[0] = maxOf(entry[0], last)
-                                entry[2]++
-                            } else {
-                                entry[1] = maxOf(entry[1], last)
-                                entry[3]++
-                            }
-                        }
-                    }
-                }
-            }
-
-            map.forEach { (pkg, data) ->
-                val hasCam = data[0] > 0
-                val hasMic = data[1] > 0
-                if (!hasCam && !hasMic) return@forEach
-
-                val sensorType = when {
+            SensorAccessEntry(
+                packageName = pkg,
+                appName     = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
+                              catch (e: Exception) { pkg },
+                icon        = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null },
+                accessType  = when {
                     hasCam && hasMic -> SensorType.BOTH
                     hasCam           -> SensorType.CAMERA
                     else             -> SensorType.MICROPHONE
-                }
-                val lastAccess = maxOf(data[0], data[1])
-                val countToday = (data[2] + data[3]).toInt()
-
-                results.add(SensorAccessEntry(
-                    packageName = pkg,
-                    appName     = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
-                                  catch (e: Exception) { pkg },
-                    icon        = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null },
-                    accessType  = sensorType,
-                    lastAccess  = lastAccess,
-                    accessCount = countToday
-                ))
-            }
-        } catch (e: Exception) {
-            // PACKAGE_USAGE_STATS not granted — return empty, UI shows prompt
-        }
-
-        return results.sortedByDescending { it.lastAccess }
+                },
+                lastAccess  = stat.lastTimeUsed,
+                accessCount = 0
+            )
+        }.sortedByDescending { it.lastAccess }
     }
 
     // ── Full access history ────────────────────────────
-    fun getAccessHistory(context: Context, windowMs: Long = 24 * 60 * 60 * 1000L): List<AccessHistoryEntry> {
-        val results = mutableListOf<AccessHistoryEntry>()
-        val pm = context.packageManager
+    fun getAccessHistory(context: Context, windowMs: Long = 24L * 60 * 60 * 1000L): List<AccessHistoryEntry> {
+        val pm  = context.packageManager
+        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val now = System.currentTimeMillis()
 
-        val sensitiveOps = mapOf(
-            AppOpsManager.OPSTR_CAMERA        to PermCategory.CAMERA,
-            AppOpsManager.OPSTR_RECORD_AUDIO  to PermCategory.MICROPHONE,
-            AppOpsManager.OPSTR_GET_ACCOUNTS  to PermCategory.CONTACTS,
-            AppOpsManager.OPSTR_READ_CONTACTS to PermCategory.CONTACTS,
-            AppOpsManager.OPSTR_READ_SMS      to PermCategory.SMS,
-            AppOpsManager.OPSTR_SEND_SMS      to PermCategory.SMS,
-            AppOpsManager.OPSTR_FINE_LOCATION to PermCategory.LOCATION,
-            AppOpsManager.OPSTR_COARSE_LOCATION to PermCategory.LOCATION,
+        val statsMap = try {
+            usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - windowMs, now)
+                ?.filter { it.lastTimeUsed > 0L }
+                ?.groupBy { it.packageName }
+                ?.mapValues { (_, list) -> list.maxByOrNull { it.lastTimeUsed }!! }
+        } catch (e: Exception) { null } ?: return emptyList()
+
+        // Permissions to track → category mapping
+        val sensitivePerms = listOf(
+            "android.permission.CAMERA"                 to PermCategory.CAMERA,
+            "android.permission.RECORD_AUDIO"           to PermCategory.MICROPHONE,
+            "android.permission.ACCESS_FINE_LOCATION"   to PermCategory.LOCATION,
+            "android.permission.ACCESS_COARSE_LOCATION" to PermCategory.LOCATION,
+            "android.permission.READ_CONTACTS"          to PermCategory.CONTACTS,
+            "android.permission.READ_SMS"               to PermCategory.SMS,
         )
 
-        try {
-            val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val now    = System.currentTimeMillis()
+        val results = mutableListOf<AccessHistoryEntry>()
+        val seenCats = mutableSetOf<String>() // deduplicate pkg+category
 
-            sensitiveOps.forEach { (op, category) ->
-                @Suppress("DEPRECATION")
-                val pkgOps = try { appOps.getPackagesForOps(arrayOf(op)) }
-                             catch (e: Exception) { emptyList<AppOpsManager.PackageOps>() }
+        for ((pkg, stat) in statsMap) {
+            val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
+                          catch (e: Exception) { pkg }
+            val icon    = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null }
 
-                pkgOps.forEach { pkgOp ->
-                    pkgOp.ops.forEach { opEntry ->
-                        val last = if (Build.VERSION.SDK_INT >= 29) opEntry.lastAccessTime
-                                   else @Suppress("DEPRECATION") opEntry.time
-                        if (last > 0 && (now - last) <= windowMs) {
-                            val dur = if (Build.VERSION.SDK_INT >= 29) opEntry.lastDuration else 0L
-                            results.add(AccessHistoryEntry(
-                                packageName = pkgOp.packageName,
-                                appName     = try { pm.getApplicationLabel(pm.getApplicationInfo(pkgOp.packageName, 0)).toString() }
-                                              catch (e: Exception) { pkgOp.packageName },
-                                icon        = try { pm.getApplicationIcon(pkgOp.packageName) } catch (e: Exception) { null },
-                                permission  = op,
-                                category    = category,
-                                timestamp   = last,
-                                durationMs  = dur
-                            ))
-                        }
-                    }
-                }
+            for ((perm, category) in sensitivePerms) {
+                val key = "$pkg:${category.name}"
+                if (key in seenCats) continue          // already added this pkg+cat
+                if (pm.checkPermission(perm, pkg) != PackageManager.PERMISSION_GRANTED) continue
+
+                seenCats.add(key)
+                results.add(AccessHistoryEntry(
+                    packageName = pkg,
+                    appName     = appName,
+                    icon        = icon,
+                    permission  = perm,
+                    category    = category,
+                    timestamp   = stat.lastTimeUsed,
+                    durationMs  = stat.totalTimeInForeground
+                ))
             }
-        } catch (e: Exception) { /* PACKAGE_USAGE_STATS not granted */ }
+        }
 
         return results.sortedByDescending { it.timestamp }
     }
@@ -315,11 +332,10 @@ object PermissionAnalyzer {
         val highRisk = apps.count { it.riskLevel == RiskLevel.HIGH && !it.isSystem }
         val totalNonSystem = apps.count { !it.isSystem }
 
-        // Start at 100, deduct points
         var score = 100
-        score -= minOf(40, highRisk * 5)                          // up to -40 for high-risk apps
-        score -= minOf(30, threats.count { !it.isSystem } * 10)   // up to -30 for threats
-        score -= minOf(20, accesses.size * 2)                     // up to -20 for sensor accesses
+        score -= minOf(40, highRisk * 5)
+        score -= minOf(30, threats.count { !it.isSystem } * 10)
+        score -= minOf(20, accesses.size * 2)
         score  = score.coerceIn(0, 100)
 
         return SecurityScore(
