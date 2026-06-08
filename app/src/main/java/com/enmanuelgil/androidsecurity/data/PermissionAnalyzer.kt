@@ -238,22 +238,35 @@ object PermissionAnalyzer {
     }
 
     // ── Apps with camera/mic permission GRANTED ───────
-    /** For Guard tab: shows which user-installed apps CAN access camera/mic.
-     *  No timestamps, no false usage data — just permission grants. */
+    /** For Guard tab: shows user-installed apps with camera/mic actually granted at runtime.
+     *  Dual check: app must DECLARE the permission in manifest AND AppOps must be ALLOWED.
+     *  This eliminates false positives from FOREGROUND_SERVICE_CAMERA type declarations. */
     fun getGrantedCamMicApps(context: Context): List<SensorAccessEntry> {
-        val pm = context.packageManager
-        return getAllPackages(pm).mapNotNull { pkg ->
-            if (isSystemApp(pkg.applicationInfo)) return@mapNotNull null
+        val pm     = context.packageManager
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
 
-            val hasCam = pm.checkPermission("android.permission.CAMERA", pkg.packageName) ==
-                         PackageManager.PERMISSION_GRANTED
-            val hasMic = pm.checkPermission("android.permission.RECORD_AUDIO", pkg.packageName) ==
-                         PackageManager.PERMISSION_GRANTED
+        fun isOpGranted(op: String, uid: Int, pkgName: String): Boolean = try {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(op, uid, pkgName) == AppOpsManager.MODE_ALLOWED
+        } catch (_: Exception) { false }
+
+        return getAllPackages(pm).mapNotNull { pkg ->
+            val appInfo  = pkg.applicationInfo ?: return@mapNotNull null
+            if (isSystemApp(appInfo)) return@mapNotNull null
+
+            // Must declare the actual runtime permission in manifest
+            val requested = pkg.requestedPermissions ?: return@mapNotNull null
+            val declaresCam = "android.permission.CAMERA"       in requested
+            val declaresMic = "android.permission.RECORD_AUDIO" in requested
+
+            // AND AppOps must reflect user actually granted it
+            val hasCam = declaresCam && isOpGranted(AppOpsManager.OPSTR_CAMERA,      appInfo.uid, pkg.packageName)
+            val hasMic = declaresMic && isOpGranted(AppOpsManager.OPSTR_RECORD_AUDIO, appInfo.uid, pkg.packageName)
             if (!hasCam && !hasMic) return@mapNotNull null
 
             SensorAccessEntry(
                 packageName = pkg.packageName,
-                appName     = try { pm.getApplicationLabel(pkg.applicationInfo).toString() }
+                appName     = try { pm.getApplicationLabel(appInfo).toString() }
                               catch (_: Exception) { pkg.packageName },
                 icon        = try { pm.getApplicationIcon(pkg.packageName) } catch (_: Exception) { null },
                 accessType  = when {
@@ -261,7 +274,7 @@ object PermissionAnalyzer {
                     hasCam           -> SensorType.CAMERA
                     else             -> SensorType.MICROPHONE
                 },
-                lastAccess  = 0L,  // Not tracked from PermissionAnalyzer — see AccessLog
+                lastAccess  = 0L,
                 accessCount = 0
             )
         }.sortedBy { it.appName }

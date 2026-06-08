@@ -20,6 +20,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.enmanuelgil.androidsecurity.R
 import com.enmanuelgil.androidsecurity.data.AccessEvent
@@ -33,10 +36,19 @@ import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.*
 
+private fun hasUsagePermission(context: Context): Boolean = try {
+    val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+    appOps.checkOpNoThrow(
+        android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+        android.os.Process.myUid(), context.packageName
+    ) == android.app.AppOpsManager.MODE_ALLOWED
+} catch (_: Exception) { false }
+
 @Composable
 fun GuardScreen(vm: GuardViewModel = viewModel()) {
     val context = LocalContext.current
     val data    by vm.data.collectAsState()
+    val hasUsagePerm = remember { hasUsagePermission(context) }
 
     // ── Real-time camera state via CameraManager ──────
     val cameraInUse = remember { mutableStateMapOf<String, Boolean>() }
@@ -71,18 +83,91 @@ fun GuardScreen(vm: GuardViewModel = viewModel()) {
         }
     }
 
+    // ── Reload when tab becomes visible again (lifecycle RESUME) ──
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.load(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     LaunchedEffect(Unit) { vm.load(context) }
 
     LazyColumn(
         modifier        = Modifier.fillMaxSize(),
         contentPadding  = PaddingValues(bottom = 24.dp)
     ) {
-        // ── Header ──────────────────────────────────────
+        // ── Header con botón actualizar ─────────────────
         item {
-            ScreenHeader(
-                title    = stringResource(R.string.guard_title),
-                subtitle = stringResource(R.string.guard_subtitle)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 8.dp, top = 20.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.guard_title),
+                        style = MaterialTheme.typography.headlineMedium)
+                    Text(stringResource(R.string.guard_subtitle),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
+                }
+                IconButton(
+                    onClick = { vm.load(context) },
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, "Actualizar",
+                        tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+            HorizontalDivider(
+                Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.outline.copy(0.3f)
             )
+        }
+
+        // ── Banner: permiso Acceso al Uso ──────────────
+        if (!hasUsagePerm) {
+            item {
+                Surface(
+                    color    = Color(0xFFF59E0B).copy(0.12f),
+                    shape    = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment    = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(Icons.Default.Info, null,
+                            tint = Color(0xFFF59E0B), modifier = Modifier.size(18.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Identificación de apps limitada",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = Color(0xFFF59E0B))
+                            Text("Para saber qué app usó la cámara/micrófono, concede 'Acceso al Uso' en Ajustes.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(0.6f))
+                        }
+                        TextButton(
+                            onClick = {
+                                context.startActivity(
+                                    android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                )
+                            },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+                        ) {
+                            Text("Conceder", style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFF59E0B))
+                        }
+                    }
+                }
+            }
         }
 
         // ── Real-time status cards ──────────────────────

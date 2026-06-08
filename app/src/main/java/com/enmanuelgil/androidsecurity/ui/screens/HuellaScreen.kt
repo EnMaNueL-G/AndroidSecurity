@@ -1,7 +1,11 @@
 package com.enmanuelgil.androidsecurity.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -228,7 +232,7 @@ fun HuellaScreen(vm: AnomaliesViewModel = viewModel()) {
             ) {
                 Column(
                     Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         "Esta aplicación es gratuita y de código abierto. Si te resulta útil, " +
@@ -236,25 +240,26 @@ fun HuellaScreen(vm: AnomaliesViewModel = viewModel()) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(0.6f)
                     )
-                    Button(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://app.binance.com/payment"))
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors   = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFF0B90B),
-                            contentColor   = Color.Black
-                        )
-                    ) {
-                        Icon(Icons.Default.Favorite, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Donar con Binance Pay", fontWeight = FontWeight.SemiBold)
-                    }
+
+                    // Binance Pay ID
+                    DonateRow(
+                        label   = "Binance Pay ID",
+                        value   = "1140153333",
+                        color   = Color(0xFFF0B90B),
+                        context = context
+                    )
+
+                    // BNB BEP20 address
+                    DonateRow(
+                        label   = "BNB Smart Chain (BEP20)",
+                        value   = "0x0a9a0d8d816ede885d1d4a5c94369a72ef86b3c1",
+                        color   = Color(0xFFF0B90B),
+                        context = context
+                    )
+
                     Text(
-                        "Todas las donaciones son voluntarias. Ningún dato tuyo se envía a Binance " +
-                        "desde esta app — el botón abre Binance en tu navegador.",
+                        "Toca 'Copiar' junto al método de pago elegido. " +
+                        "Todas las donaciones son voluntarias.",
                         style    = MaterialTheme.typography.bodySmall,
                         color    = MaterialTheme.colorScheme.onSurface.copy(0.35f),
                         fontSize = 10.sp
@@ -293,6 +298,48 @@ private fun ExposureRow(
             fontWeight = FontWeight.Medium,
             color      = color,
             modifier   = Modifier.width(24.dp))
+    }
+}
+
+@Composable
+private fun DonateRow(
+    label   : String,
+    value   : String,
+    color   : Color,
+    context : Context
+) {
+    Surface(
+        color    = color.copy(0.07f),
+        shape    = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label,
+                style = MaterialTheme.typography.labelSmall,
+                color = color)
+            Row(
+                verticalAlignment    = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    value,
+                    style    = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1
+                )
+                IconButton(
+                    onClick = {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        cm.setPrimaryClip(ClipData.newPlainText(label, value))
+                        Toast.makeText(context, "Copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, "Copiar",
+                        tint = color, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
     }
 }
 

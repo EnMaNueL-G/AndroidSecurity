@@ -77,6 +77,7 @@
     <string name="guard_channel_name">Guard Cámara/Micrófono</string>
     <string name="guard_channel_desc">Monitoreo de uso de cámara y micrófono</string>
     <string name="guard_unknown_app">App desconocida</string>
+    <string name="guard_needs_usage_access">Concede permiso Acceso al Uso para identificar apps</string>
 
     <!-- History screen -->
     <string name="hist_title">Historial de accesos</string>

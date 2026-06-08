@@ -4,6 +4,7 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
@@ -233,23 +234,49 @@ class AnomaliesViewModel : ViewModel() {
 
     // ── Mi Huella Digital stats ───────────────────────
     private fun buildHuellaStats(context: Context): HuellaStats {
-        val pm = context.packageManager
-        fun count(perm: String) = pm.getInstalledApplications(0)
-            .count { info ->
-                !PermissionAnalyzer.isSystemApp(info) &&
-                pm.checkPermission(perm, info.packageName) == android.content.pm.PackageManager.PERMISSION_GRANTED
-            }
+        val pm     = context.packageManager
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
 
-        val cam  = count("android.permission.CAMERA")
-        val mic  = count("android.permission.RECORD_AUDIO")
-        val loc  = count("android.permission.ACCESS_FINE_LOCATION") +
-                   count("android.permission.ACCESS_COARSE_LOCATION")
-        val con  = count("android.permission.READ_CONTACTS")
-        val sms  = count("android.permission.READ_SMS")
+        // AppOpsManager refleja el estado de concesión runtime real en Android 10+
+        // checkOpNoThrow con UID de la app funciona sin permisos especiales
+        fun isOpGranted(op: String, uid: Int, pkgName: String): Boolean = try {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(op, uid, pkgName) == AppOpsManager.MODE_ALLOWED
+        } catch (_: Exception) { false }
 
-        // Privacy score: start at 100, deduct for exposure
+        // GET_PERMISSIONS para acceder a requestedPermissions (declaraciones en manifest)
+        val packages = try {
+            if (Build.VERSION.SDK_INT >= 33)
+                pm.getInstalledPackages(android.content.pm.PackageManager.PackageInfoFlags.of(
+                    android.content.pm.PackageManager.GET_PERMISSIONS.toLong()))
+            else
+                @Suppress("DEPRECATION")
+                pm.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS)
+        } catch (_: Exception) { emptyList() }
+
+        val userPackages = packages.filter { pkg ->
+            try { !PermissionAnalyzer.isSystemApp(pkg.applicationInfo) }
+            catch (_: Exception) { false }
+        }
+
+        // Dual check: declarado en manifest + AppOps ALLOWED (usuario lo concedió en runtime)
+        fun countOp(op: String, manifestPerm: String): Int = userPackages.count { pkg ->
+            val declared = pkg.requestedPermissions?.contains(manifestPerm) == true
+            declared && isOpGranted(op, pkg.applicationInfo.uid, pkg.packageName)
+        }
+
+        val cam = countOp(AppOpsManager.OPSTR_CAMERA,        "android.permission.CAMERA")
+        val mic = countOp(AppOpsManager.OPSTR_RECORD_AUDIO,  "android.permission.RECORD_AUDIO")
+        val loc = userPackages.count { pkg ->
+            val declFine   = pkg.requestedPermissions?.contains("android.permission.ACCESS_FINE_LOCATION")   == true
+            val declCoarse = pkg.requestedPermissions?.contains("android.permission.ACCESS_COARSE_LOCATION") == true
+            (declFine   && isOpGranted(AppOpsManager.OPSTR_FINE_LOCATION,   pkg.applicationInfo.uid, pkg.packageName)) ||
+            (declCoarse && isOpGranted(AppOpsManager.OPSTR_COARSE_LOCATION, pkg.applicationInfo.uid, pkg.packageName))
+        }
+        val con = countOp(AppOpsManager.OPSTR_READ_CONTACTS, "android.permission.READ_CONTACTS")
+        val sms = countOp(AppOpsManager.OPSTR_READ_SMS,      "android.permission.READ_SMS")
+
         val score = (100 - cam * 3 - mic * 3 - loc * 4 - con * 2 - sms * 6).coerceIn(0, 100)
-
         return HuellaStats(cam, mic, loc, con, sms, score)
     }
 }

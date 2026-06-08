@@ -4,6 +4,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.app.usage.UsageStatsManager
+import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
@@ -65,11 +67,16 @@ class CamMicGuardService : Service() {
                 cameraInUse[cameraId] = true
                 updateNotification(getString(R.string.guard_camera_in_use))
 
-                // Log event — try to attribute to foreground app
+                // Log event — try to attribute to foreground app via UsageStats
                 val foregroundPkg = getForegroundApp()
+                val appLabel = when {
+                    foregroundPkg != null -> getAppName(foregroundPkg)
+                    hasUsagePermission()  -> getString(R.string.guard_unknown_app)
+                    else                  -> getString(R.string.guard_needs_usage_access)
+                }
                 AccessLog.add(applicationContext, AccessEvent(
                     packageName = foregroundPkg ?: "unknown",
-                    appName     = foregroundPkg?.let { getAppName(it) } ?: getString(R.string.guard_unknown_app),
+                    appName     = appLabel,
                     sensorType  = SensorType.CAMERA,
                     timestamp   = System.currentTimeMillis(),
                     note        = "cam:$cameraId"
@@ -96,10 +103,15 @@ class CamMicGuardService : Service() {
                         updateNotification(getString(R.string.guard_mic_in_use))
 
                         // Try to identify which app started recording
-                        val pkg = resolveRecordingPackage(configs)
+                        val pkg      = resolveRecordingPackage(configs)
+                        val appLabel = when {
+                            pkg != null      -> getAppName(pkg)
+                            hasUsagePermission() -> getString(R.string.guard_unknown_app)
+                            else             -> getString(R.string.guard_needs_usage_access)
+                        }
                         AccessLog.add(applicationContext, AccessEvent(
                             packageName = pkg ?: "unknown",
-                            appName     = pkg?.let { getAppName(it) } ?: getString(R.string.guard_unknown_app),
+                            appName     = appLabel,
                             sensorType  = SensorType.MICROPHONE,
                             timestamp   = micSessionStart
                         ))
@@ -122,19 +134,52 @@ class CamMicGuardService : Service() {
     private fun resolveRecordingPackage(configs: List<AudioRecordingConfiguration>): String? =
         getForegroundApp()
 
-    /** Returns the package of the most recently active app (best-effort heuristic). */
-    @Suppress("DEPRECATION")
-    private fun getForegroundApp(): String? = try {
-        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
-        am.getRunningAppProcesses()
-            ?.filter { it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
-            ?.firstOrNull { it.pkgList?.none { pkg -> pkg == packageName } == true }
-            ?.pkgList?.firstOrNull()
-    } catch (_: Exception) { null }
+    /** Returns the package of the most recently used app via UsageStats (most accurate on Android 10+).
+     *  Falls back to ActivityManager foreground process list on older versions. */
+    private fun getForegroundApp(): String? {
+        // Primary: UsageStatsManager — requires PACKAGE_USAGE_STATS (already declared)
+        try {
+            val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+            val now = System.currentTimeMillis()
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 30_000L, now)
+            if (!stats.isNullOrEmpty()) {
+                // Excluir nuestra app, launcher y UI del sistema
+                val excluded = setOf(
+                    packageName,
+                    "com.android.systemui",
+                    "com.android.launcher3",
+                    "com.vivo.launcher",
+                    "com.bbk.launcher2"
+                )
+                val recent = stats
+                    .filter { it.packageName !in excluded && it.lastTimeUsed > now - 30_000L }
+                    .maxByOrNull { it.lastTimeUsed }
+                if (recent != null) return recent.packageName
+            }
+        } catch (_: Exception) {}
+
+        // Fallback: ActivityManager (works on older Android, restricted on Android 13+)
+        @Suppress("DEPRECATION")
+        return try {
+            val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+            am.getRunningAppProcesses()
+                ?.filter { it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+                ?.firstOrNull { it.pkgList?.none { pkg -> pkg == packageName } == true }
+                ?.pkgList?.firstOrNull()
+        } catch (_: Exception) { null }
+    }
 
     private fun getAppName(pkg: String): String = try {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (_: Exception) { pkg }
+
+    private fun hasUsagePermission(): Boolean = try {
+        val appOps = getSystemService(APP_OPS_SERVICE) as android.app.AppOpsManager
+        appOps.checkOpNoThrow(
+            android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(), packageName
+        ) == android.app.AppOpsManager.MODE_ALLOWED
+    } catch (_: Exception) { false }
 
     private fun unregisterCallbacks() {
         runCatching { cameraCallback?.let { cameraManager?.unregisterAvailabilityCallback(it) } }
