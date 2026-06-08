@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AndroidSecurity</string>
+
+    <!-- Tabs -->
+    <string name="tab_permissions">Permissions</string>
+    <string name="tab_detector">Détecteur</string>
+    <string name="tab_guard">Garde</string>
+    <string name="tab_history">Historique</string>
+
+    <!-- Permissions screen -->
+    <string name="perm_title">Permissions des apps</string>
+    <string name="perm_subtitle">Apps avec permissions sensibles</string>
+    <string name="perm_loading">Analyse en cours…</string>
+    <string name="perm_filter_all">Tout</string>
+    <string name="perm_filter_high">Risque élevé</string>
+    <string name="perm_filter_medium">Moyen</string>
+    <string name="perm_filter_system">Système</string>
+
+    <!-- Detector screen -->
+    <string name="det_title">Détecteur de menaces</string>
+    <string name="det_subtitle">Services d\'accessibilité, admins et combinaisons dangereuses</string>
+    <string name="det_no_threats">Aucune menace détectée</string>
+
+    <!-- Guard screen -->
+    <string name="guard_title">Garde Caméra / Micro</string>
+    <string name="guard_subtitle">Apps ayant utilisé la caméra ou le micro récemment</string>
+    <string name="guard_needs_permission">Permission d\'utilisation requise</string>
+    <string name="guard_permission_why">Cette permission permet de voir quelles apps utilisent la caméra et le micro</string>
+    <string name="guard_grant_permission">Accorder la permission</string>
+    <string name="guard_no_access">Aucun accès récent à la caméra ou au micro</string>
+    <string name="guard_note">Données des 30 derniers jours via AppOpsManager</string>
+    <string name="guard_service_monitoring">Surveillance active…</string>
+    <string name="guard_camera_in_use">⚠ Caméra en cours d\'utilisation</string>
+    <string name="guard_mic_in_use">⚠ Microphone en cours d\'utilisation</string>
+    <string name="guard_notif_title">Garde AndroidSecurity</string>
+    <string name="guard_stop_service">Arrêter</string>
+    <string name="guard_channel_name">Garde Caméra/Micro</string>
+    <string name="guard_channel_desc">Surveillance de l\'utilisation de la caméra et du micro</string>
+
+    <!-- History screen -->
+    <string name="hist_title">Historique d\'accès</string>
+    <string name="hist_subtitle">Accès récents aux permissions sensibles</string>
+    <string name="hist_no_activity">Aucune activité dans cette période</string>
+</resources>

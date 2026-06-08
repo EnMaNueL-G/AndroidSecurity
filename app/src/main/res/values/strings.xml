@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ESPAÑOL (idioma base) -->
+<resources>
+    <string name="app_name">AndroidSecurity</string>
+    <string name="app_tagline">Seguridad y privacidad para tu dispositivo</string>
+
+    <!-- Nav tabs -->
+    <string name="tab_permissions">Permisos</string>
+    <string name="tab_detector">Detector</string>
+    <string name="tab_guard">Guard</string>
+    <string name="tab_history">Historial</string>
+
+    <!-- Permissions screen -->
+    <string name="perm_title">Auditor de permisos</string>
+    <string name="perm_subtitle">Todas las apps con sus permisos clasificados por riesgo</string>
+    <string name="perm_filter_all">Todas</string>
+    <string name="perm_filter_high">Alto riesgo</string>
+    <string name="perm_filter_medium">Medio</string>
+    <string name="perm_filter_system">Sistema</string>
+    <string name="perm_loading">Analizando apps instaladas…</string>
+    <string name="perm_count">%1$d apps analizadas</string>
+    <string name="perm_dangerous_count">%1$d permisos peligrosos</string>
+    <string name="risk_high">Alto riesgo</string>
+    <string name="risk_medium">Medio</string>
+    <string name="risk_low">Bajo</string>
+    <string name="risk_safe">Seguro</string>
+
+    <!-- Permission categories -->
+    <string name="cat_camera">Cámara</string>
+    <string name="cat_microphone">Micrófono</string>
+    <string name="cat_location">Ubicación</string>
+    <string name="cat_contacts">Contactos</string>
+    <string name="cat_sms">SMS / Llamadas</string>
+    <string name="cat_storage">Almacenamiento</string>
+    <string name="cat_accessibility">Accesibilidad</string>
+    <string name="cat_device_admin">Admin de dispositivo</string>
+    <string name="cat_overlay">Overlay / PiP</string>
+    <string name="cat_other">Otros</string>
+
+    <!-- Detector screen -->
+    <string name="det_title">Detector de espías</string>
+    <string name="det_subtitle">Servicios sospechosos, combinaciones de permisos peligrosas y overlays activos</string>
+    <string name="det_section_accessibility">Servicios de accesibilidad activos</string>
+    <string name="det_section_dangerous_combo">Combinaciones peligrosas</string>
+    <string name="det_section_overlay">Apps con overlay activo</string>
+    <string name="det_section_device_admin">Apps con administración de dispositivo</string>
+    <string name="det_no_threats">No se detectaron amenazas</string>
+    <string name="det_threat_count">%1$d elementos sospechosos</string>
+    <string name="det_combo_cam_mic">Acceso a cámara + micrófono simultáneo</string>
+    <string name="det_combo_sms_loc">SMS + ubicación (típico de spyware)</string>
+    <string name="det_combo_acc_overlay">Accesibilidad + overlay (puede capturar pantalla)</string>
+    <string name="det_trusted">App verificada del sistema</string>
+    <string name="det_suspicious">Sospechosa — revisar</string>
+    <string name="det_open_settings">Abrir en ajustes</string>
+    <string name="det_disable">Deshabilitar</string>
+
+    <!-- Guard screen -->
+    <string name="guard_title">Guard cámara / micrófono</string>
+    <string name="guard_subtitle">Registro de accesos recientes a cámara y micrófono por app</string>
+    <string name="guard_cam">Cámara</string>
+    <string name="guard_mic">Micrófono</string>
+    <string name="guard_both">Cámara y Mic</string>
+    <string name="guard_last_access">Último acceso</string>
+    <string name="guard_accesses_today">accesos hoy</string>
+    <string name="guard_no_access">Sin accesos registrados</string>
+    <string name="guard_needs_permission">Requiere permiso de uso de aplicaciones</string>
+    <string name="guard_grant_permission">Conceder permiso</string>
+    <string name="guard_permission_why">AndroidSecurity necesita el permiso \"Acceso al uso\" para monitorear qué apps usan la cámara y el micrófono. Tus datos NO se envían a ningún servidor.</string>
+    <string name="guard_note">Solo disponible en Android 8+. Todos los datos se procesan localmente.</string>
+    <string name="guard_service_monitoring">Vigilancia activa…</string>
+    <string name="guard_camera_in_use">⚠ Cámara en uso</string>
+    <string name="guard_mic_in_use">⚠ Micrófono en uso</string>
+    <string name="guard_notif_title">AndroidSecurity Guard</string>
+    <string name="guard_stop_service">Detener</string>
+    <string name="guard_channel_name">Guard Cámara/Micrófono</string>
+    <string name="guard_channel_desc">Monitoreo de uso de cámara y micrófono</string>
+
+    <!-- History screen -->
+    <string name="hist_title">Historial de accesos</string>
+    <string name="hist_subtitle">Qué app accedió a qué permiso sensible en las últimas 24 horas</string>
+    <string name="hist_no_data">Sin datos de accesos recientes</string>
+    <string name="hist_filter_24h">24 horas</string>
+    <string name="hist_filter_7d">7 días</string>
+    <string name="hist_filter_30d">30 días</string>
+    <string name="hist_total_accesses">%1$d accesos registrados</string>
+    <string name="hist_just_now">Ahora mismo</string>
+    <string name="hist_minutes_ago">Hace %1$d min</string>
+    <string name="hist_hours_ago">Hace %1$d h</string>
+    <string name="hist_days_ago">Hace %1$d días</string>
+    <string name="hist_no_activity">Sin actividad en este período</string>
+
+    <!-- Common -->
+    <string name="btn_refresh">Actualizar</string>
+    <string name="btn_ok">Aceptar</string>
+    <string name="btn_cancel">Cancelar</string>
+    <string name="app_version">v1.0.0</string>
+    <string name="open_github">Ver en GitHub</string>
+    <string name="no_root_required">Sin root requerido</string>
+    <string name="local_processing">Todo se procesa localmente</string>
+    <string name="score_label">Puntuación de seguridad</string>
+    <string name="score_good">Bien configurado</string>
+    <string name="score_medium">Mejorable</string>
+    <string name="score_bad">Revisar urgente</string>
+</resources>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AndroidSecurity</string>
+
+    <!-- Tabs -->
+    <string name="tab_permissions">Berechtigungen</string>
+    <string name="tab_detector">Detektor</string>
+    <string name="tab_guard">Wächter</string>
+    <string name="tab_history">Verlauf</string>
+
+    <!-- Permissions screen -->
+    <string name="perm_title">App-Berechtigungen</string>
+    <string name="perm_subtitle">Apps mit sensiblen Berechtigungen</string>
+    <string name="perm_loading">Analyse läuft…</string>
+    <string name="perm_filter_all">Alle</string>
+    <string name="perm_filter_high">Hohes Risiko</string>
+    <string name="perm_filter_medium">Mittel</string>
+    <string name="perm_filter_system">System</string>
+
+    <!-- Detector screen -->
+    <string name="det_title">Bedrohungserkennung</string>
+    <string name="det_subtitle">Barrierefreiheitsdienste, Admins und gefährliche Kombinationen</string>
+    <string name="det_no_threats">Keine Bedrohungen erkannt</string>
+
+    <!-- Guard screen -->
+    <string name="guard_title">Kamera / Mikrofon-Wächter</string>
+    <string name="guard_subtitle">Apps, die zuletzt Kamera oder Mikrofon verwendet haben</string>
+    <string name="guard_needs_permission">Nutzungszugriff erforderlich</string>
+    <string name="guard_permission_why">Diese Berechtigung zeigt, welche Apps Kamera und Mikrofon nutzen</string>
+    <string name="guard_grant_permission">Berechtigung erteilen</string>
+    <string name="guard_no_access">Kein aktueller Kamera- oder Mikrofon-Zugriff</string>
+    <string name="guard_note">Daten der letzten 30 Tage via AppOpsManager</string>
+    <string name="guard_service_monitoring">Überwachung aktiv…</string>
+    <string name="guard_camera_in_use">⚠ Kamera wird verwendet</string>
+    <string name="guard_mic_in_use">⚠ Mikrofon wird verwendet</string>
+    <string name="guard_notif_title">AndroidSecurity-Wächter</string>
+    <string name="guard_stop_service">Stoppen</string>
+    <string name="guard_channel_name">Kamera/Mikrofon-Wächter</string>
+    <string name="guard_channel_desc">Überwachung von Kamera- und Mikrofon-Nutzung</string>
+
+    <!-- History screen -->
+    <string name="hist_title">Zugriffsverlauf</string>
+    <string name="hist_subtitle">Letzte Zugriffe auf sensible Berechtigungen</string>
+    <string name="hist_no_activity">Keine Aktivität in diesem Zeitraum</string>
+</resources>
