@@ -7,13 +7,15 @@ import android.app.Service
 import android.content.Intent
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
-import android.media.AudioRecordingCallback
 import android.media.AudioRecordingConfiguration
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.enmanuelgil.androidsecurity.MainActivity
 import com.enmanuelgil.androidsecurity.R
+import com.enmanuelgil.androidsecurity.data.AccessEvent
+import com.enmanuelgil.androidsecurity.data.AccessLog
+import com.enmanuelgil.androidsecurity.model.SensorType
 
 class CamMicGuardService : Service() {
 
@@ -24,10 +26,16 @@ class CamMicGuardService : Service() {
         const val ACTION_STOP  = "com.enmanuelgil.androidsecurity.GUARD_STOP"
     }
 
-    private var cameraManager: CameraManager?    = null
-    private var audioManager: AudioManager?      = null
+    private var cameraManager : CameraManager? = null
+    private var audioManager  : AudioManager?  = null
+
     private var cameraCallback: CameraManager.AvailabilityCallback? = null
-    private var audioCallback: AudioRecordingCallback?              = null
+    private var audioCallback : AudioManager.AudioRecordingCallback? = null
+
+    // Track which cameras are currently in use (cameraId → in-use)
+    private val cameraInUse = mutableMapOf<String, Boolean>()
+    // Track mic session start time for duration calculation
+    private var micSessionStart = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -37,13 +45,9 @@ class CamMicGuardService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
-        }
-
+        if (intent?.action == ACTION_STOP) { stopSelf(); return START_NOT_STICKY }
         startForeground(NOTIF_ID, buildNotification(getString(R.string.guard_service_monitoring)))
-        registerCameraCallback()
-        registerAudioCallback()
+        registerCallbacks()
         return START_STICKY
     }
 
@@ -52,49 +56,98 @@ class CamMicGuardService : Service() {
         super.onDestroy()
     }
 
-    // ── Camera callback ────────────────────────────────────────────────────────
-    private fun registerCameraCallback() {
+    // ── Camera monitoring ──────────────────────────────
+    private fun registerCallbacks() {
         cameraManager = getSystemService(CAMERA_SERVICE) as CameraManager
         cameraCallback = object : CameraManager.AvailabilityCallback() {
             override fun onCameraUnavailable(cameraId: String) {
-                // Camera is in use by some app
+                if (cameraInUse[cameraId] == true) return  // already tracking
+                cameraInUse[cameraId] = true
                 updateNotification(getString(R.string.guard_camera_in_use))
+
+                // Log event — try to attribute to foreground app
+                val foregroundPkg = getForegroundApp()
+                AccessLog.add(applicationContext, AccessEvent(
+                    packageName = foregroundPkg ?: "unknown",
+                    appName     = foregroundPkg?.let { getAppName(it) } ?: getString(R.string.guard_unknown_app),
+                    sensorType  = SensorType.CAMERA,
+                    timestamp   = System.currentTimeMillis(),
+                    note        = "cam:$cameraId"
+                ))
             }
+
             override fun onCameraAvailable(cameraId: String) {
-                updateNotification(getString(R.string.guard_service_monitoring))
+                cameraInUse[cameraId] = false
+                if (cameraInUse.values.none { it }) {
+                    updateNotification(getString(R.string.guard_service_monitoring))
+                }
             }
         }
         cameraManager?.registerAvailabilityCallback(cameraCallback!!, null)
-    }
 
-    // ── Audio callback ─────────────────────────────────────────────────────────
-    private fun registerAudioCallback() {
+        // ── Mic monitoring ─────────────────────────────
         if (Build.VERSION.SDK_INT < 29) return
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        audioCallback = object : AudioRecordingCallback() {
+        audioCallback = object : AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs: List<AudioRecordingConfiguration>) {
                 if (configs.isNotEmpty()) {
-                    updateNotification(getString(R.string.guard_mic_in_use))
+                    if (micSessionStart == 0L) {
+                        micSessionStart = System.currentTimeMillis()
+                        updateNotification(getString(R.string.guard_mic_in_use))
+
+                        // Try to identify which app started recording
+                        val pkg = resolveRecordingPackage(configs)
+                        AccessLog.add(applicationContext, AccessEvent(
+                            packageName = pkg ?: "unknown",
+                            appName     = pkg?.let { getAppName(it) } ?: getString(R.string.guard_unknown_app),
+                            sensorType  = SensorType.MICROPHONE,
+                            timestamp   = micSessionStart
+                        ))
+                    }
                 } else {
-                    updateNotification(getString(R.string.guard_service_monitoring))
+                    if (micSessionStart > 0L) {
+                        // Update last logged mic event with duration
+                        micSessionStart = 0L
+                        updateNotification(getString(R.string.guard_service_monitoring))
+                    }
                 }
             }
         }
         audioManager?.registerAudioRecordingCallback(audioCallback!!, null)
     }
 
+    /** Identifies the recording app. AudioRecordingConfiguration doesn't expose package name
+     *  via public API, so we use the foreground app as best-effort heuristic. */
+    @Suppress("UNUSED_PARAMETER")
+    private fun resolveRecordingPackage(configs: List<AudioRecordingConfiguration>): String? =
+        getForegroundApp()
+
+    /** Returns the package of the most recently active app (best-effort heuristic). */
+    @Suppress("DEPRECATION")
+    private fun getForegroundApp(): String? = try {
+        val am = getSystemService(ACTIVITY_SERVICE) as android.app.ActivityManager
+        am.getRunningAppProcesses()
+            ?.filter { it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND }
+            ?.firstOrNull { it.pkgList?.none { pkg -> pkg == packageName } == true }
+            ?.pkgList?.firstOrNull()
+    } catch (_: Exception) { null }
+
+    private fun getAppName(pkg: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (_: Exception) { pkg }
+
     private fun unregisterCallbacks() {
-        try { cameraCallback?.let { cameraManager?.unregisterAvailabilityCallback(it) } } catch (e: Exception) {}
-        try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                audioCallback?.let { audioManager?.unregisterAudioRecordingCallback(it) }
+        runCatching { cameraCallback?.let { cameraManager?.unregisterAvailabilityCallback(it) } }
+        runCatching {
+            audioCallback?.let { cb ->
+                if (Build.VERSION.SDK_INT >= 29) audioManager?.unregisterAudioRecordingCallback(cb)
             }
-        } catch (e: Exception) {}
+        }
     }
 
-    // ── Notifications ──────────────────────────────────────────────────────────
+    // ── Notifications ──────────────────────────────────
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
+        val ch = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.guard_channel_name),
             NotificationManager.IMPORTANCE_LOW
@@ -102,35 +155,30 @@ class CamMicGuardService : Service() {
             description = getString(R.string.guard_channel_desc)
             setShowBadge(false)
         }
-        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(ch)
     }
 
-    private fun buildNotification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_menu_camera)
-        .setContentTitle(getString(R.string.guard_notif_title))
-        .setContentText(text)
-        .setOngoing(true)
-        .setPriority(NotificationCompat.PRIORITY_LOW)
-        .setContentIntent(
-            PendingIntent.getActivity(
+    private fun buildNotification(text: String) =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setContentTitle(getString(R.string.guard_notif_title))
+            .setContentText(text)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(PendingIntent.getActivity(
                 this, 0,
                 Intent(this, MainActivity::class.java),
-                PendingIntent.FLAG_IMMUTABLE
-            )
-        )
-        .addAction(
-            android.R.drawable.ic_delete,
-            getString(R.string.guard_stop_service),
-            PendingIntent.getService(
-                this, 0,
-                Intent(this, CamMicGuardService::class.java).setAction(ACTION_STOP),
-                PendingIntent.FLAG_IMMUTABLE
-            )
-        )
-        .build()
+                PendingIntent.FLAG_IMMUTABLE))
+            .addAction(
+                android.R.drawable.ic_delete,
+                getString(R.string.guard_stop_service),
+                PendingIntent.getService(
+                    this, 0,
+                    Intent(this, CamMicGuardService::class.java).setAction(ACTION_STOP),
+                    PendingIntent.FLAG_IMMUTABLE))
+            .build()
 
     private fun updateNotification(text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        nm?.notify(NOTIF_ID, buildNotification(text))
+        getSystemService(NotificationManager::class.java)?.notify(NOTIF_ID, buildNotification(text))
     }
 }

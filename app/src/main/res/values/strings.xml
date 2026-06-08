@@ -9,6 +9,8 @@
     <string name="tab_detector">Detector</string>
     <string name="tab_guard">Guard</string>
     <string name="tab_history">Historial</string>
+    <string name="tab_anomalies">Anomalías</string>
+    <string name="tab_huella">Huella</string>
 
     <!-- Permissions screen -->
     <string name="perm_title">Auditor de permisos</string>
@@ -74,10 +76,11 @@
     <string name="guard_stop_service">Detener</string>
     <string name="guard_channel_name">Guard Cámara/Micrófono</string>
     <string name="guard_channel_desc">Monitoreo de uso de cámara y micrófono</string>
+    <string name="guard_unknown_app">App desconocida</string>
 
     <!-- History screen -->
     <string name="hist_title">Historial de accesos</string>
-    <string name="hist_subtitle">Qué app accedió a qué permiso sensible en las últimas 24 horas</string>
+    <string name="hist_subtitle">Eventos registrados por el servicio Guard en tiempo real</string>
     <string name="hist_no_data">Sin datos de accesos recientes</string>
     <string name="hist_filter_24h">24 horas</string>
     <string name="hist_filter_7d">7 días</string>
@@ -88,6 +91,39 @@
     <string name="hist_hours_ago">Hace %1$d h</string>
     <string name="hist_days_ago">Hace %1$d días</string>
     <string name="hist_no_activity">Sin actividad en este período</string>
+
+    <!-- Anomalies screen -->
+    <string name="anom_title">Anomalías del dispositivo</string>
+    <string name="anom_subtitle">Detección de vectores de intervención y acceso remoto</string>
+    <string name="anom_root">Root detectado</string>
+    <string name="anom_dev_options">Opciones de desarrollador activas</string>
+    <string name="anom_usb_debug">Depuración USB activada</string>
+    <string name="anom_adb_network">ADB por red activado</string>
+    <string name="anom_vpn">VPN activa</string>
+    <string name="anom_user_cert">Certificado CA de usuario instalado</string>
+    <string name="anom_notif_listener">Apps leyendo tus notificaciones</string>
+    <string name="anom_overlay">Apps con permiso de overlay</string>
+    <string name="anom_battery">Apps exentas de optimización de batería</string>
+    <string name="anom_clean">Dispositivo limpio</string>
+    <string name="anom_clean_desc">No se detectaron métodos de intervención o anomalías.</string>
+
+    <!-- Huella screen -->
+    <string name="huella_title">Mi Huella Digital</string>
+    <string name="huella_subtitle">Tu exposición de privacidad en apps instaladas</string>
+    <string name="huella_score">Puntuación de privacidad</string>
+    <string name="huella_score_good">Buena privacidad</string>
+    <string name="huella_score_medium">Exposición moderada</string>
+    <string name="huella_score_bad">Alta exposición — revisar</string>
+    <string name="huella_exposure_title">Exposición por categoría (apps de usuario)</string>
+    <string name="huella_about">Acerca de la app</string>
+    <string name="huella_web">optisuite.app</string>
+    <string name="huella_github">GitHub — EnMaNueL-G</string>
+    <string name="huella_version">Versión 1.0.0</string>
+    <string name="huella_no_root">Sin root · Sin internet · 100% local</string>
+    <string name="huella_donate_title">Apoya el proyecto</string>
+    <string name="huella_donate_desc">Esta aplicación es gratuita y de código abierto. Si te resulta útil, puedes apoyar su desarrollo con una donación voluntaria.</string>
+    <string name="huella_donate_btn">Donar con Binance Pay</string>
+    <string name="huella_donate_note">Todas las donaciones son voluntarias. El botón abre Binance en tu navegador.</string>
 
     <!-- Common -->
     <string name="btn_refresh">Actualizar</string>

@@ -7,45 +7,53 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.enmanuelgil.androidsecurity.R
 import com.enmanuelgil.androidsecurity.ui.screens.*
 
-enum class Screen { PERMISSIONS, DETECTOR, GUARD, HISTORY }
+enum class Screen { PERMISSIONS, DETECTOR, GUARD, ANOMALIES, HUELLA }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen() {
-    var selected by remember { mutableStateOf(Screen.PERMISSIONS) }
+fun MainScreen(initialScreen: Screen = Screen.PERMISSIONS) {
+    var selected by remember { mutableStateOf(initialScreen) }
 
     Scaffold(
         bottomBar = {
             NavigationBar(
-                containerColor  = MaterialTheme.colorScheme.surface,
-                tonalElevation  = 0.dp
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp
             ) {
                 NavigationBarItem(
                     selected = selected == Screen.PERMISSIONS,
                     onClick  = { selected = Screen.PERMISSIONS },
-                    icon     = { Icon(Icons.Default.Security, contentDescription = null) },
-                    label    = { Text(stringResource(R.string.tab_permissions)) }
+                    icon     = { Icon(Icons.Default.Security, null) },
+                    label    = { Text("Permisos", fontSize = 10.sp) }
                 )
                 NavigationBarItem(
                     selected = selected == Screen.DETECTOR,
                     onClick  = { selected = Screen.DETECTOR },
-                    icon     = { Icon(Icons.Default.BugReport, contentDescription = null) },
-                    label    = { Text(stringResource(R.string.tab_detector)) }
+                    icon     = { Icon(Icons.Default.BugReport, null) },
+                    label    = { Text("Detector", fontSize = 10.sp) }
                 )
                 NavigationBarItem(
                     selected = selected == Screen.GUARD,
                     onClick  = { selected = Screen.GUARD },
-                    icon     = { Icon(Icons.Default.Videocam, contentDescription = null) },
-                    label    = { Text(stringResource(R.string.tab_guard)) }
+                    icon     = { Icon(Icons.Default.Videocam, null) },
+                    label    = { Text("Guard", fontSize = 10.sp) }
                 )
                 NavigationBarItem(
-                    selected = selected == Screen.HISTORY,
-                    onClick  = { selected = Screen.HISTORY },
-                    icon     = { Icon(Icons.Default.History, contentDescription = null) },
-                    label    = { Text(stringResource(R.string.tab_history)) }
+                    selected = selected == Screen.ANOMALIES,
+                    onClick  = { selected = Screen.ANOMALIES },
+                    icon     = { Icon(Icons.Default.GppBad, null) },
+                    label    = { Text("Anomalías", fontSize = 10.sp) }
+                )
+                NavigationBarItem(
+                    selected = selected == Screen.HUELLA,
+                    onClick  = { selected = Screen.HUELLA },
+                    icon     = { Icon(Icons.Default.Fingerprint, null) },
+                    label    = { Text("Huella", fontSize = 10.sp) }
                 )
             }
         }
@@ -55,7 +63,8 @@ fun MainScreen() {
                 Screen.PERMISSIONS -> PermissionsScreen()
                 Screen.DETECTOR    -> DetectorScreen()
                 Screen.GUARD       -> GuardScreen()
-                Screen.HISTORY     -> HistoryScreen()
+                Screen.ANOMALIES   -> AnomaliesScreen()
+                Screen.HUELLA      -> HuellaScreen()
             }
         }
     }

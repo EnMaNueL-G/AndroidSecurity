@@ -18,8 +18,8 @@ data class AppPermissionInfo(
     val packageName : String,
     val appName     : String,
     val icon        : Drawable?,
-    val permissions : List<String>,           // all granted dangerous perms
-    val categories  : Set<PermCategory>,      // categorized
+    val permissions : List<String>,
+    val categories  : Set<PermCategory>,
     val riskLevel   : RiskLevel,
     val isSystem    : Boolean
 )
@@ -37,39 +37,57 @@ data class ThreatEntry(
     val appName     : String,
     val icon        : Drawable?,
     val threatType  : ThreatType,
-    val detail      : String,          // human-readable description
+    val detail      : String,
+    val reason      : String,        // Descripción en español para el usuario
     val riskLevel   : RiskLevel,
     val isSystem    : Boolean
 )
 
-// ── Camera/Mic access entry ────────────────────────────
+// ── Camera/Mic grant entry (Guard tab — no false timestamps) ──
 data class SensorAccessEntry(
     val packageName : String,
     val appName     : String,
     val icon        : Drawable?,
     val accessType  : SensorType,
-    val lastAccess  : Long,            // epoch ms
-    val accessCount : Int              // in current day
+    val lastAccess  : Long,          // 0 if unknown / not tracked
+    val accessCount : Int            // 0 if not tracked
 )
 
 enum class SensorType { CAMERA, MICROPHONE, BOTH }
 
-// ── History entry ──────────────────────────────────────
+// ── History entry (from AccessLog — service logged events only) ──
 data class AccessHistoryEntry(
     val packageName : String,
     val appName     : String,
     val icon        : Drawable?,
     val permission  : String,
     val category    : PermCategory,
-    val timestamp   : Long,            // epoch ms
-    val durationMs  : Long             // 0 if unknown
+    val timestamp   : Long,
+    val durationMs  : Long
+)
+
+// ── Device-level anomaly entry ─────────────────────────
+enum class AnomalyType {
+    ROOT_DETECTED, DEV_OPTIONS, USB_DEBUG, ADB_NETWORK,
+    VPN_ACTIVE, USER_CERTIFICATE, OVERLAY_APPS,
+    NOTIFICATION_LISTENERS, BATTERY_WHITELIST
+}
+
+data class AnomalyEntry(
+    val title       : String,
+    val description : String,
+    val riskLevel   : RiskLevel,
+    val type        : AnomalyType,
+    val value       : String = "",
+    val actionText  : String = "",
+    val actionScheme: String = ""
 )
 
 // ── Security score ─────────────────────────────────────
 data class SecurityScore(
-    val score          : Int,     // 0-100
+    val score          : Int,
     val highRiskApps   : Int,
     val activeThreats  : Int,
     val totalApps      : Int,
-    val sensorAccesses : Int      // last 24h
+    val sensorAccesses : Int
 )

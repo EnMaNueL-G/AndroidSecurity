@@ -2,9 +2,9 @@ package com.enmanuelgil.androidsecurity.data
 
 import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
-import android.app.usage.UsageStatsManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -13,7 +13,7 @@ import com.enmanuelgil.androidsecurity.model.*
 
 object PermissionAnalyzer {
 
-    // ── Permissions classified by category and risk ────
+    // ── High / Medium risk permission sets ───────────
     private val HIGH_RISK = setOf(
         "android.permission.READ_SMS",
         "android.permission.SEND_SMS",
@@ -43,307 +43,256 @@ object PermissionAnalyzer {
         "android.permission.MANAGE_EXTERNAL_STORAGE",
     )
 
+    // ── Category mapping ──────────────────────────────
     private fun permToCategory(perm: String): PermCategory = when {
-        perm.contains("CAMERA")                    -> PermCategory.CAMERA
-        perm.contains("RECORD_AUDIO")              -> PermCategory.MICROPHONE
-        perm.contains("LOCATION")                  -> PermCategory.LOCATION
-        perm.contains("CONTACT")                   -> PermCategory.CONTACTS
+        perm.contains("CAMERA")                                    -> PermCategory.CAMERA
+        perm.contains("RECORD_AUDIO")                             -> PermCategory.MICROPHONE
+        perm.contains("LOCATION")                                 -> PermCategory.LOCATION
+        perm.contains("CONTACT")                                  -> PermCategory.CONTACTS
         perm.contains("SMS") || perm.contains("CALL") || perm.contains("PHONE")
-                                                   -> PermCategory.SMS
-        perm.contains("STORAGE") || perm.contains("EXTERNAL")
-                                                   -> PermCategory.STORAGE
-        perm.contains("ACCESSIBILITY")             -> PermCategory.ACCESSIBILITY
-        perm.contains("DEVICE_ADMIN")              -> PermCategory.DEVICE_ADMIN
+                                                                   -> PermCategory.SMS
+        perm.contains("STORAGE") || perm.contains("EXTERNAL")     -> PermCategory.STORAGE
+        perm.contains("ACCESSIBILITY")                            -> PermCategory.ACCESSIBILITY
+        perm.contains("DEVICE_ADMIN")                             -> PermCategory.DEVICE_ADMIN
         perm.contains("SYSTEM_ALERT_WINDOW") || perm.contains("OVERLAY")
-                                                   -> PermCategory.OVERLAY
-        else                                       -> PermCategory.OTHER
+                                                                   -> PermCategory.OVERLAY
+        else                                                       -> PermCategory.OTHER
     }
 
-    // ── Reflection helper for hidden getPackagesForOps ─
-    @Suppress("UNCHECKED_CAST")
-    private fun getPackagesForOpsReflect(appOps: AppOpsManager, op: String): List<Any> {
-        return try {
-            val method = appOps.javaClass.getMethod("getPackagesForOps", Array<String>::class.java)
-            (method.invoke(appOps, arrayOf(op)) as? List<*>)?.filterNotNull() ?: emptyList()
-        } catch (e: Exception) { emptyList() }
-    }
+    // ── System app detection ──────────────────────────
+    /** Returns true for both pre-installed and updated system packages */
+    fun isSystemApp(info: ApplicationInfo): Boolean =
+        (info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
 
-    private fun getPackageName(pkgOp: Any): String? = try {
-        pkgOp.javaClass.getMethod("getPackageName").invoke(pkgOp) as? String
-    } catch (e: Exception) { null }
-
-    private fun getOps(pkgOp: Any): List<Any> = try {
-        @Suppress("UNCHECKED_CAST")
-        (pkgOp.javaClass.getMethod("getOps").invoke(pkgOp) as? List<*>)?.filterNotNull() ?: emptyList()
-    } catch (e: Exception) { emptyList() }
-
-    // Android 10 (API 29)+ replaced getTime() with getLastAccessTime(int flags).
-    // OP_FLAGS_ALL_TRUSTED = 0x0b, OP_FLAGS_ALL = 0x1f — pass ALL to get any recorded access.
-    private fun getLastAccessTime(opEntry: Any): Long = try {
-        if (Build.VERSION.SDK_INT >= 29) {
-            try {
-                opEntry.javaClass
-                    .getMethod("getLastAccessTime", Int::class.javaPrimitiveType)
-                    .invoke(opEntry, 0x1f) as? Long ?: 0L
-            } catch (_: Exception) {
-                opEntry.javaClass.getMethod("getLastAccessTime").invoke(opEntry) as? Long ?: 0L
-            }
-        } else {
-            opEntry.javaClass.getMethod("getTime").invoke(opEntry) as? Long ?: 0L
-        }
-    } catch (e: Exception) { 0L }
-
-    private fun getLastDuration(opEntry: Any): Long = try {
-        if (Build.VERSION.SDK_INT >= 29) {
-            try {
-                opEntry.javaClass
-                    .getMethod("getLastDuration", Int::class.javaPrimitiveType)
-                    .invoke(opEntry, 0x1f) as? Long ?: 0L
-            } catch (_: Exception) {
-                opEntry.javaClass.getMethod("getLastDuration").invoke(opEntry) as? Long ?: 0L
-            }
-        } else 0L
-    } catch (e: Exception) { 0L }
-
-    // ── Scan all installed apps ────────────────────────
+    // ── Scan all installed apps ───────────────────────
     fun getAppPermissions(context: Context): List<AppPermissionInfo> {
         val pm = context.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= 33)
-            PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
-        else
-            @Suppress("DEPRECATION") PackageManager.GET_PERMISSIONS
-
-        val packages: List<PackageInfo> = if (Build.VERSION.SDK_INT >= 33)
-            pm.getInstalledPackages(flags as PackageManager.PackageInfoFlags)
-        else
-            @Suppress("DEPRECATION") pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+        val packages: List<PackageInfo> = getAllPackages(pm)
 
         return packages.mapNotNull { pkg ->
             val requestedPerms = pkg.requestedPermissions ?: return@mapNotNull null
-            val grantedDangerous = requestedPerms.filter { perm ->
-                perm in HIGH_RISK || perm in MEDIUM_RISK
-            }
-            if (grantedDangerous.isEmpty()) return@mapNotNull null
+            val dangerous = requestedPerms.filter { it in HIGH_RISK || it in MEDIUM_RISK }
+            if (dangerous.isEmpty()) return@mapNotNull null
 
-            val categories = grantedDangerous.map { permToCategory(it) }.toSet()
+            val categories = dangerous.map { permToCategory(it) }.toSet()
+            val isSystem   = isSystemApp(pkg.applicationInfo)
+
+            // CRITICAL FIX: System apps legitimately hold sensitive permissions
+            // (Settings, Camera, Contacts, Phone). We cap them at SAFE so they
+            // don't pollute the HIGH-risk list meant for suspicious user apps.
             val riskLevel = when {
-                grantedDangerous.any { it in HIGH_RISK }   -> RiskLevel.HIGH
-                grantedDangerous.any { it in MEDIUM_RISK } -> RiskLevel.MEDIUM
-                else                                       -> RiskLevel.LOW
+                isSystem -> RiskLevel.SAFE
+                dangerous.any { it in HIGH_RISK }   -> RiskLevel.HIGH
+                dangerous.any { it in MEDIUM_RISK } -> RiskLevel.MEDIUM
+                else                                -> RiskLevel.LOW
             }
-            val isSystem = (pkg.applicationInfo.flags and
-                android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
 
             AppPermissionInfo(
                 packageName = pkg.packageName,
                 appName     = try { pm.getApplicationLabel(pkg.applicationInfo).toString() }
                               catch (e: Exception) { pkg.packageName },
-                icon        = try { pm.getApplicationIcon(pkg.packageName) } catch (e: Exception) { null },
-                permissions = grantedDangerous,
+                icon        = try { pm.getApplicationIcon(pkg.packageName) } catch (_: Exception) { null },
+                permissions = dangerous,
                 categories  = categories,
                 riskLevel   = riskLevel,
                 isSystem    = isSystem
             )
-        }.sortedWith(compareBy({ it.riskLevel.order }, { it.isSystem }, { it.appName }))
+        }
+        // User apps first (non-system), then system; within each group sort by risk then name
+        .sortedWith(compareBy({ it.isSystem }, { it.riskLevel.order }, { it.appName }))
     }
 
-    // ── Detect threats ─────────────────────────────────
+    // ── Detect threats (app-level) ────────────────────
+    /**
+     * Only flags apps whose behavior strongly suggests surveillance or abuse.
+     * - Accessibility service active → can read all screen content and keystrokes.
+     * - Device admin active → can wipe device or block uninstall.
+     * - Accessibility + Overlay → classic keylogger / phishing overlay pattern.
+     * - Accessibility + Camera/Mic → spy app pattern.
+     * - SMS + Background Location → stalkerware pattern.
+     *
+     * CAM+MIC alone is NOT a threat — communication apps (WhatsApp, Telegram, etc.)
+     * legitimately need both. We only flag if other suspicious elements are present.
+     */
     fun getThreats(context: Context): List<ThreatEntry> {
         val threats = mutableListOf<ThreatEntry>()
         val pm = context.packageManager
 
-        // 1. Accessibility services
-        val accessibilityEnabled = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        // ── 1. Accessibility services ──────────────────
+        val accessEnabled = Settings.Secure.getString(
+            context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: ""
-        if (accessibilityEnabled.isNotBlank()) {
-            accessibilityEnabled.split(":").forEach { comp ->
+
+        if (accessEnabled.isNotBlank()) {
+            accessEnabled.split(":").forEach { comp ->
                 val pkg = comp.split("/").firstOrNull()?.trim() ?: return@forEach
                 if (pkg.isEmpty()) return@forEach
-                val isSystem = try {
-                    val ai = pm.getApplicationInfo(pkg, 0)
-                    (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-                } catch (e: Exception) { false }
+                val isSystem = try { isSystemApp(pm.getApplicationInfo(pkg, 0)) }
+                               catch (_: Exception) { false }
 
                 threats.add(ThreatEntry(
                     packageName = pkg,
                     appName     = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
-                                  catch (e: Exception) { pkg },
-                    icon        = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null },
+                                  catch (_: Exception) { pkg },
+                    icon        = try { pm.getApplicationIcon(pkg) } catch (_: Exception) { null },
                     threatType  = ThreatType.ACCESSIBILITY_SERVICE,
                     detail      = comp,
+                    reason      = "Tiene acceso total a tu pantalla. Puede leer contraseñas, " +
+                                  "capturar lo que escribes y controlar otras aplicaciones.",
                     riskLevel   = if (isSystem) RiskLevel.LOW else RiskLevel.HIGH,
                     isSystem    = isSystem
                 ))
             }
         }
 
-        // 2. Device Admins
+        // ── 2. Device admins ───────────────────────────
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         val admins: List<ComponentName> = try { dpm.activeAdmins ?: emptyList() }
-                                          catch (e: Exception) { emptyList() }
+                                          catch (_: Exception) { emptyList() }
         admins.forEach { cn ->
             val pkg = cn.packageName
-            val isSystem = try {
-                val ai = pm.getApplicationInfo(pkg, 0)
-                (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
-            } catch (e: Exception) { false }
+            val isSystem = try { isSystemApp(pm.getApplicationInfo(pkg, 0)) }
+                           catch (_: Exception) { false }
 
             threats.add(ThreatEntry(
                 packageName = pkg,
                 appName     = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
-                              catch (e: Exception) { pkg },
-                icon        = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null },
+                              catch (_: Exception) { pkg },
+                icon        = try { pm.getApplicationIcon(pkg) } catch (_: Exception) { null },
                 threatType  = ThreatType.DEVICE_ADMIN,
                 detail      = cn.className,
+                reason      = "Puede bloquear el dispositivo, borrar todos los datos o " +
+                              "impedir su propia desinstalación.",
                 riskLevel   = if (isSystem) RiskLevel.LOW else RiskLevel.MEDIUM,
                 isSystem    = isSystem
             ))
         }
 
-        // 3. Dangerous permission combos
+        // ── 3. Suspicious permission combos ───────────
+        // Only user-installed apps (isSystem = false) are checked.
         val allApps = getAppPermissions(context)
-        allApps.forEach { app ->
-            val cats = app.categories
-            val combos = mutableListOf<String>()
+        allApps.filter { !it.isSystem }.forEach { app ->
+            val cats  = app.categories
+            val perms = app.permissions
 
-            if (cats.contains(PermCategory.CAMERA) && cats.contains(PermCategory.MICROPHONE))
-                combos.add("CAM_MIC")
-            if (cats.contains(PermCategory.SMS) && cats.contains(PermCategory.LOCATION))
-                combos.add("SMS_LOC")
-            if (cats.contains(PermCategory.ACCESSIBILITY) && cats.contains(PermCategory.OVERLAY))
-                combos.add("ACC_OVL")
+            val hasAcc     = cats.contains(PermCategory.ACCESSIBILITY)
+            val hasOverlay = cats.contains(PermCategory.OVERLAY)
+            val hasCam     = cats.contains(PermCategory.CAMERA)
+            val hasMic     = cats.contains(PermCategory.MICROPHONE)
+            val hasSms     = cats.contains(PermCategory.SMS)
+            val hasLoc     = cats.contains(PermCategory.LOCATION)
+            val hasBgLoc   = perms.contains("android.permission.ACCESS_BACKGROUND_LOCATION")
 
-            if (combos.isNotEmpty() && !app.isSystem) {
+            // Overlay + Accessibility → phishing / keylogger pattern
+            if (hasAcc && hasOverlay) {
                 threats.add(ThreatEntry(
-                    packageName = app.packageName,
-                    appName     = app.appName,
-                    icon        = app.icon,
+                    packageName = app.packageName, appName = app.appName, icon = app.icon,
                     threatType  = ThreatType.DANGEROUS_COMBO,
-                    detail      = combos.joinToString(", "),
-                    riskLevel   = RiskLevel.HIGH,
-                    isSystem    = false
+                    detail      = "ACC+OVL",
+                    reason      = "Combinación de alto riesgo: puede superponer pantallas falsas " +
+                                  "mientras lee tus contraseñas en tiempo real (patrón keylogger).",
+                    riskLevel   = RiskLevel.HIGH, isSystem = false
+                ))
+            }
+
+            // Accessibility + Camera or Mic → spy app pattern
+            if (hasAcc && (hasCam || hasMic) && !hasOverlay) {
+                threats.add(ThreatEntry(
+                    packageName = app.packageName, appName = app.appName, icon = app.icon,
+                    threatType  = ThreatType.DANGEROUS_COMBO,
+                    detail      = "ACC+CAM/MIC",
+                    reason      = "Una app de accesibilidad con acceso a cámara o micrófono " +
+                                  "puede grabar sin que la pantalla lo indique.",
+                    riskLevel   = RiskLevel.HIGH, isSystem = false
+                ))
+            }
+
+            // SMS + precise Background Location → stalkerware
+            if (hasSms && hasLoc && hasBgLoc) {
+                threats.add(ThreatEntry(
+                    packageName = app.packageName, appName = app.appName, icon = app.icon,
+                    threatType  = ThreatType.DANGEROUS_COMBO,
+                    detail      = "SMS+BG_LOC",
+                    reason      = "Puede leer tus mensajes y rastrear tu ubicación exacta en " +
+                                  "segundo plano sin que lo notes (patrón espía).",
+                    riskLevel   = RiskLevel.HIGH, isSystem = false
+                ))
+            }
+
+            // Overlay alone (non-system) → phishing risk
+            if (hasOverlay && !hasAcc && !app.isSystem) {
+                threats.add(ThreatEntry(
+                    packageName = app.packageName, appName = app.appName, icon = app.icon,
+                    threatType  = ThreatType.OVERLAY_ACTIVE,
+                    detail      = "OVERLAY",
+                    reason      = "Puede mostrar pantallas falsas sobre otras aplicaciones, " +
+                                  "incluyendo pantallas de pago o inicio de sesión.",
+                    riskLevel   = RiskLevel.MEDIUM, isSystem = false
                 ))
             }
         }
 
-        return threats.sortedWith(compareBy({ it.riskLevel.order }, { it.isSystem }, { it.appName }))
+        return threats
+            .distinctBy { "${it.packageName}-${it.threatType}-${it.detail}" }
+            .sortedWith(compareBy({ it.riskLevel.order }, { it.isSystem }, { it.appName }))
     }
 
-    // ── Camera / Microphone access history ─────────────
-    // Uses UsageStatsManager (requires PACKAGE_USAGE_STATS) — Android 12+ blocked the
-    // hidden getPackagesForOps API, so UsageStats is the only reliable public approach.
-    fun getCamMicAccesses(context: Context): List<SensorAccessEntry> {
-        val pm  = context.packageManager
-        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now = System.currentTimeMillis()
-        val windowMs = 30L * 24 * 60 * 60 * 1000L
+    // ── Apps with camera/mic permission GRANTED ───────
+    /** For Guard tab: shows which user-installed apps CAN access camera/mic.
+     *  No timestamps, no false usage data — just permission grants. */
+    fun getGrantedCamMicApps(context: Context): List<SensorAccessEntry> {
+        val pm = context.packageManager
+        return getAllPackages(pm).mapNotNull { pkg ->
+            if (isSystemApp(pkg.applicationInfo)) return@mapNotNull null
 
-        val statsMap = try {
-            usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - windowMs, now)
-                ?.filter { it.lastTimeUsed > 0L }
-                ?.groupBy { it.packageName }
-                ?.mapValues { (_, list) -> list.maxByOrNull { it.lastTimeUsed }!! }
-        } catch (e: Exception) { null } ?: return emptyList()
-
-        return statsMap.values.mapNotNull { stat ->
-            val pkg    = stat.packageName
-            val hasCam = pm.checkPermission("android.permission.CAMERA", pkg) ==
+            val hasCam = pm.checkPermission("android.permission.CAMERA", pkg.packageName) ==
                          PackageManager.PERMISSION_GRANTED
-            val hasMic = pm.checkPermission("android.permission.RECORD_AUDIO", pkg) ==
+            val hasMic = pm.checkPermission("android.permission.RECORD_AUDIO", pkg.packageName) ==
                          PackageManager.PERMISSION_GRANTED
             if (!hasCam && !hasMic) return@mapNotNull null
 
             SensorAccessEntry(
-                packageName = pkg,
-                appName     = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
-                              catch (e: Exception) { pkg },
-                icon        = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null },
+                packageName = pkg.packageName,
+                appName     = try { pm.getApplicationLabel(pkg.applicationInfo).toString() }
+                              catch (_: Exception) { pkg.packageName },
+                icon        = try { pm.getApplicationIcon(pkg.packageName) } catch (_: Exception) { null },
                 accessType  = when {
                     hasCam && hasMic -> SensorType.BOTH
                     hasCam           -> SensorType.CAMERA
                     else             -> SensorType.MICROPHONE
                 },
-                lastAccess  = stat.lastTimeUsed,
+                lastAccess  = 0L,  // Not tracked from PermissionAnalyzer — see AccessLog
                 accessCount = 0
             )
-        }.sortedByDescending { it.lastAccess }
+        }.sortedBy { it.appName }
     }
 
-    // ── Full access history ────────────────────────────
-    fun getAccessHistory(context: Context, windowMs: Long = 24L * 60 * 60 * 1000L): List<AccessHistoryEntry> {
-        val pm  = context.packageManager
-        val usm = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now = System.currentTimeMillis()
-
-        val statsMap = try {
-            usm.queryUsageStats(UsageStatsManager.INTERVAL_BEST, now - windowMs, now)
-                ?.filter { it.lastTimeUsed > 0L }
-                ?.groupBy { it.packageName }
-                ?.mapValues { (_, list) -> list.maxByOrNull { it.lastTimeUsed }!! }
-        } catch (e: Exception) { null } ?: return emptyList()
-
-        // Permissions to track → category mapping
-        val sensitivePerms = listOf(
-            "android.permission.CAMERA"                 to PermCategory.CAMERA,
-            "android.permission.RECORD_AUDIO"           to PermCategory.MICROPHONE,
-            "android.permission.ACCESS_FINE_LOCATION"   to PermCategory.LOCATION,
-            "android.permission.ACCESS_COARSE_LOCATION" to PermCategory.LOCATION,
-            "android.permission.READ_CONTACTS"          to PermCategory.CONTACTS,
-            "android.permission.READ_SMS"               to PermCategory.SMS,
-        )
-
-        val results = mutableListOf<AccessHistoryEntry>()
-        val seenCats = mutableSetOf<String>() // deduplicate pkg+category
-
-        for ((pkg, stat) in statsMap) {
-            val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
-                          catch (e: Exception) { pkg }
-            val icon    = try { pm.getApplicationIcon(pkg) } catch (e: Exception) { null }
-
-            for ((perm, category) in sensitivePerms) {
-                val key = "$pkg:${category.name}"
-                if (key in seenCats) continue          // already added this pkg+cat
-                if (pm.checkPermission(perm, pkg) != PackageManager.PERMISSION_GRANTED) continue
-
-                seenCats.add(key)
-                results.add(AccessHistoryEntry(
-                    packageName = pkg,
-                    appName     = appName,
-                    icon        = icon,
-                    permission  = perm,
-                    category    = category,
-                    timestamp   = stat.lastTimeUsed,
-                    durationMs  = stat.totalTimeInForeground
-                ))
-            }
-        }
-
-        return results.sortedByDescending { it.timestamp }
-    }
-
-    // ── Security score ─────────────────────────────────
+    // ── Security score ────────────────────────────────
     fun computeScore(
         apps    : List<AppPermissionInfo>,
-        threats : List<ThreatEntry>,
-        accesses: List<SensorAccessEntry>
+        threats : List<ThreatEntry>
     ): SecurityScore {
-        val highRisk = apps.count { it.riskLevel == RiskLevel.HIGH && !it.isSystem }
-        val totalNonSystem = apps.count { !it.isSystem }
-
+        val highRisk     = apps.count { it.riskLevel == RiskLevel.HIGH }
+        val nonSystemTotal = apps.count { !it.isSystem }
         var score = 100
         score -= minOf(40, highRisk * 5)
-        score -= minOf(30, threats.count { !it.isSystem } * 10)
-        score -= minOf(20, accesses.size * 2)
+        score -= minOf(40, threats.count { !it.isSystem } * 10)
         score  = score.coerceIn(0, 100)
-
         return SecurityScore(
             score          = score,
             highRiskApps   = highRisk,
             activeThreats  = threats.count { !it.isSystem },
-            totalApps      = totalNonSystem,
-            sensorAccesses = accesses.size
+            totalApps      = nonSystemTotal,
+            sensorAccesses = 0
         )
     }
+
+    // ── Package helper ────────────────────────────────
+    @Suppress("DEPRECATION")
+    private fun getAllPackages(pm: PackageManager): List<PackageInfo> =
+        if (Build.VERSION.SDK_INT >= 33)
+            pm.getInstalledPackages(PackageManager.PackageInfoFlags.of(
+                PackageManager.GET_PERMISSIONS.toLong()))
+        else
+            pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
 }
