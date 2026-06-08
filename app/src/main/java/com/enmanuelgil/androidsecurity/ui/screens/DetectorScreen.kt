@@ -3,6 +3,7 @@ package com.enmanuelgil.androidsecurity.ui.screens
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,12 +17,41 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.enmanuelgil.androidsecurity.R
 import com.enmanuelgil.androidsecurity.model.*
 import com.enmanuelgil.androidsecurity.ui.components.*
 import com.enmanuelgil.androidsecurity.ui.viewmodel.DetectorViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+
+// ── USSD / herramientas de verificación telefónica ────
+private data class UssdTool(
+    val code       : String,
+    val label      : String,
+    val description: String,
+    val isAction   : Boolean = false   // true = ejecuta acción, false = solo consulta
+)
+
+private val USSD_TOOLS = listOf(
+    UssdTool("*#21#",         "Desvío incondicional",
+        "Muestra si TODAS tus llamadas, SMS y datos están siendo redirigidos a otro número."),
+    UssdTool("*#61#",         "Desvío sin respuesta",
+        "Consulta si tus llamadas se desvían cuando no contestas. Número de destino visible."),
+    UssdTool("*#62#",         "Desvío sin cobertura",
+        "Consulta si tus llamadas se desvían cuando el teléfono está sin señal."),
+    UssdTool("*#67#",         "Desvío línea ocupada",
+        "Consulta si tus llamadas se desvían cuando ya estás hablando con alguien."),
+    UssdTool("##002#",        "Desactivar TODOS los desvíos",
+        "Cancela todos los desvíos condicionales activos. Útil si detectas reenvíos no autorizados.",
+        isAction = true),
+    UssdTool("*#06#",         "Ver IMEI",
+        "Muestra el IMEI de tu dispositivo. Compáralo con el de la caja para verificar autenticidad."),
+    UssdTool("*#*#4636#*#*",  "Info del teléfono",
+        "Abre el menú de información técnica de Android: estado de red, batería, estadísticas de uso."),
+)
 
 @Composable
 fun DetectorScreen(vm: DetectorViewModel = viewModel()) {
@@ -45,20 +75,26 @@ fun DetectorScreen(vm: DetectorViewModel = viewModel()) {
             }
 
             threats.isEmpty() -> {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(Icons.Default.CheckCircle, null,
-                            tint = Color(0xFF3DDC84), modifier = Modifier.size(56.dp))
-                        Text(stringResource(R.string.det_no_threats),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color(0xFF3DDC84))
-                        Text("No se detectaron combinaciones peligrosas de permisos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
+                LazyColumn(contentPadding = PaddingValues(16.dp)) {
+                    item {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, null,
+                                tint = Color(0xFF3DDC84), modifier = Modifier.size(56.dp))
+                            Text(stringResource(R.string.det_no_threats),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Color(0xFF3DDC84))
+                            Text("No se detectaron combinaciones peligrosas de permisos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(0.5f))
+                        }
                     }
+                    item { UssdSection() }
                 }
             }
 
@@ -135,8 +171,101 @@ fun DetectorScreen(vm: DetectorViewModel = viewModel()) {
                             ThreatCard(threat = threat, dimmed = true, onOpenSettings = {})
                         }
                     }
+
+                    // ── Herramientas de verificación (USSD) ──
+                    item { UssdSection() }
                 }
             }
+        }
+    }
+}
+
+// ── Sección de códigos USSD ───────────────────────────
+@Composable
+private fun UssdSection() {
+    val context = LocalContext.current
+
+    Column(Modifier.padding(top = 16.dp)) {
+        Text(
+            "Herramientas de verificación",
+            style    = MaterialTheme.typography.labelMedium,
+            color    = MaterialTheme.colorScheme.onSurface.copy(0.5f),
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Text(
+            "Códigos USSD para detectar desvíos de llamadas y acceder a información del dispositivo. Toca para marcar.",
+            style    = MaterialTheme.typography.bodySmall,
+            color    = MaterialTheme.colorScheme.onSurface.copy(0.35f),
+            fontSize = 10.sp,
+            modifier = Modifier.padding(bottom = 10.dp)
+        )
+        USSD_TOOLS.forEach { tool -> UssdCard(tool = tool, context = context) }
+    }
+}
+
+@Composable
+private fun UssdCard(tool: UssdTool, context: android.content.Context) {
+    val accentColor = if (tool.isAction) Color(0xFFEF5B5B) else Color(0xFF6C63FF)
+
+    Surface(
+        color    = MaterialTheme.colorScheme.surface,
+        shape    = RoundedCornerShape(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clickable {
+                try {
+                    // Encode USSD code for tel: URI (*→%2A, #→%23)
+                    val encoded = tool.code
+                        .replace("*", "%2A")
+                        .replace("#", "%23")
+                    context.startActivity(
+                        Intent(Intent.ACTION_DIAL, Uri.parse("tel:$encoded"))
+                    )
+                } catch (_: Exception) {}
+            }
+    ) {
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment    = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Code badge
+            Surface(
+                color    = accentColor.copy(0.12f),
+                shape    = RoundedCornerShape(6.dp)
+            ) {
+                Text(
+                    tool.code,
+                    modifier   = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style      = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color      = accentColor,
+                    fontSize   = 11.sp
+                )
+            }
+
+            Column(Modifier.weight(1f)) {
+                Text(
+                    tool.label,
+                    style  = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
+                )
+                Text(
+                    tool.description,
+                    style  = MaterialTheme.typography.bodySmall,
+                    color  = MaterialTheme.colorScheme.onSurface.copy(0.5f),
+                    fontSize = 10.sp
+                )
+            }
+
+            Icon(
+                Icons.Default.Call,
+                contentDescription = "Marcar",
+                tint     = accentColor.copy(0.6f),
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }

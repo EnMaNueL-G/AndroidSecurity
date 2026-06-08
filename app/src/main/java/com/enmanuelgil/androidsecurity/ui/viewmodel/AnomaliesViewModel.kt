@@ -260,18 +260,21 @@ class AnomaliesViewModel : ViewModel() {
         }
 
         // Dual check: declarado en manifest + AppOps ALLOWED (usuario lo concedió en runtime)
+        // applicationInfo puede ser null en algunos paquetes del sistema → usamos ?: continue
         fun countOp(op: String, manifestPerm: String): Int = userPackages.count { pkg ->
+            val uid = pkg.applicationInfo?.uid ?: return@count false
             val declared = pkg.requestedPermissions?.contains(manifestPerm) == true
-            declared && isOpGranted(op, pkg.applicationInfo.uid, pkg.packageName)
+            declared && isOpGranted(op, uid, pkg.packageName)
         }
 
         val cam = countOp(AppOpsManager.OPSTR_CAMERA,        "android.permission.CAMERA")
         val mic = countOp(AppOpsManager.OPSTR_RECORD_AUDIO,  "android.permission.RECORD_AUDIO")
         val loc = userPackages.count { pkg ->
+            val uid = pkg.applicationInfo?.uid ?: return@count false
             val declFine   = pkg.requestedPermissions?.contains("android.permission.ACCESS_FINE_LOCATION")   == true
             val declCoarse = pkg.requestedPermissions?.contains("android.permission.ACCESS_COARSE_LOCATION") == true
-            (declFine   && isOpGranted(AppOpsManager.OPSTR_FINE_LOCATION,   pkg.applicationInfo.uid, pkg.packageName)) ||
-            (declCoarse && isOpGranted(AppOpsManager.OPSTR_COARSE_LOCATION, pkg.applicationInfo.uid, pkg.packageName))
+            (declFine   && isOpGranted(AppOpsManager.OPSTR_FINE_LOCATION,   uid, pkg.packageName)) ||
+            (declCoarse && isOpGranted(AppOpsManager.OPSTR_COARSE_LOCATION, uid, pkg.packageName))
         }
         val con = countOp(AppOpsManager.OPSTR_READ_CONTACTS, "android.permission.READ_CONTACTS")
         val sms = countOp(AppOpsManager.OPSTR_READ_SMS,      "android.permission.READ_SMS")
