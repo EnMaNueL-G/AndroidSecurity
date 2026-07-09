@@ -244,7 +244,7 @@ fun HuellaScreen(vm: AnomaliesViewModel = viewModel()) {
                     // Binance Pay ID
                     DonateRow(
                         label   = "Binance Pay ID",
-                        value   = "1140153333",
+                        value   = "1165745950",
                         color   = Color(0xFFF0B90B),
                         context = context
                     )
@@ -252,7 +252,7 @@ fun HuellaScreen(vm: AnomaliesViewModel = viewModel()) {
                     // BNB BEP20 address
                     DonateRow(
                         label   = "BNB Smart Chain (BEP20)",
-                        value   = "0x0a9a0d8d816ede885d1d4a5c94369a72ef86b3c1",
+                        value   = "0xb6f6731a4ea87f8e1fd6f44f48b5bc4204571f08",
                         color   = Color(0xFFF0B90B),
                         context = context
                     )
