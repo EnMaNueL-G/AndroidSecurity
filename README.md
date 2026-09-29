@@ -1,91 +1,71 @@
 # AndroidSecurity
 
-**Auditoría de permisos, detección de amenazas y guard de cámara/micrófono para Android — sin root, sin servidores.**
+**Revisión de seguridad y privacidad para Android: sin root, sin Internet y sin cuentas.**
 
-[![Release](https://img.shields.io/github/v/release/EnMaNueL-G/AndroidSecurity?color=5B8DEF)](https://github.com/EnMaNueL-G/AndroidSecurity/releases)
-[![Android](https://img.shields.io/badge/Android-8%2B-3DDC84)](https://github.com/EnMaNueL-G/AndroidSecurity)
-[![License](https://img.shields.io/badge/License-MIT-7C5CEF)](LICENSE)
+Parte de la suite **[OptiSuite](https://optisuite.app)** · por Enmanuel Gil (EnMaNueL-G) · licencia MIT
 
----
+> ⚠️ **Si tienes la 1.0/1.1, desinstálala antes.** Aquellas versiones se publicaron firmadas con una clave
+> de depuración; la 1.2.0 va firmada con la clave de OptiSuite y Android no deja instalarla encima.
 
-## ¿Qué hace?
+<p>
+  <img src="docs/inicio.png" width="30%" alt="Inicio: comprobaciones del móvil">
+  <img src="docs/accesos.png" width="30%" alt="Accesos especiales">
+  <img src="docs/guardia.png" width="30%" alt="Guardia de cámara y micrófono">
+</p>
 
-| Pantalla | Función |
-|----------|---------|
-| **Permisos** | Muestra todas las apps instaladas con sus permisos clasificados por riesgo (alto / medio / bajo). Filtra por categoría. |
-| **Detector** | Detecta servicios de accesibilidad activos, administradores de dispositivo y combinaciones peligrosas de permisos (ej. cámara + micrófono juntos). |
-| **Guard** | Registra qué apps accedieron a la cámara o al micrófono en los últimos 30 días, con fecha y hora exactas. |
-| **Historial** | Timeline de accesos a permisos sensibles (cámara, micrófono, ubicación, SMS, contactos) con ventanas de 1h, 6h, 24h o 7 días. |
+## Qué hace
 
----
+| Pestaña | Qué verás |
+|---|---|
+| **Inicio** | Comprobaciones del móvil: bloqueo de pantalla, antigüedad del parche de seguridad, señales de root, depuración USB, certificados instalados por el usuario, VPN y apps que no vienen de una tienda. Cuántas de tus apps pueden usar la cámara, el micrófono, la ubicación, contactos, SMS… |
+| **Apps** | Permisos **concedidos de verdad** (no solo pedidos). Filtros: *Revisar*, *Sin usar* (apps que no abres hace más de 90 días y siguen con permisos), *Fuera de tienda*, y por permiso. Cada app explica **por qué** se señala y tiene botones para ir a sus permisos o desinstalarla. |
+| **Accesos** | Los accesos especiales, app por app: Accesibilidad, lectura de notificaciones, administrador del dispositivo, mostrar sobre otras apps, instalar apps, datos de uso, todos los archivos y sin restricciones de batería. También los códigos del operador para comprobar desvíos de llamadas. |
+| **Guardia** | Estado **en vivo** de cámara y micrófono (libre / en uso / linterna / silenciado) y, si lo activas, un registro en segundo plano con hora, duración, si la pantalla estaba apagada y qué app estaba en pantalla. Avisa si se usan con la pantalla apagada. Se reactiva al reiniciar el móvil. |
 
-## Características
+Se señalan como **«Revisar»** las combinaciones que usan las apps espía: Accesibilidad o administrador en
+una app que no viene de una tienda, Accesibilidad junto con lectura de notificaciones, SMS + ubicación
+siempre… Las apps del sistema se muestran aparte y **no se puntúan**.
 
-- **Sin root** — usa las APIs públicas de Android: `AppOpsManager`, `DevicePolicyManager`, `Settings.Secure`
-- **Sin internet** — 100% local, ningún dato sale del dispositivo
-- **Multiidioma** — Español · English · Português · Français · Deutsch
-- **Android 8+** (API 26+) compatible con Android 14
-- Interfaz oscura con Material 3 y Jetpack Compose
+## Límites (lo que ninguna app puede hacer sin root)
 
----
+- **Saber qué app usa la cámara o el micrófono.** Android solo avisa de que están ocupados. El registro
+  anota la app que estaba en pantalla (probable, no confirmado). En Android 12+ el punto verde de la barra
+  y el Panel de privacidad del sistema sí muestran la app exacta.
+- **Quitar permisos por ti:** la app te lleva a la pantalla de Ajustes donde lo haces tú.
+- **Garantizar que no hay root o una app espía bien oculta.** No es un antivirus.
+- **Ver otros perfiles** (perfil de trabajo, Island, apps duplicadas): solo analiza el perfil donde está instalada.
 
-## Capturas
+## Privacidad
 
-> *APK disponible en Releases*
+- **Sin permiso de Internet** (bloqueado en el manifiesto), sin anuncios, sin cuentas y **sin copia en la nube**.
+- El registro del guardia se guarda solo en el móvil y se puede borrar.
 
----
+| Permiso | Para qué |
+|---|---|
+| `QUERY_ALL_PACKAGES` | Ver las apps instaladas y sus permisos (el objetivo de la app). |
+| `PACKAGE_USAGE_STATS` | Lo concedes tú en Ajustes: apps sin usar y app en pantalla en el guardia. |
+| `ACCESS_NETWORK_STATE` | Saber si hay una VPN activa. |
+| `REQUEST_DELETE_PACKAGES` | Botón «Desinstalar» (Android siempre pide confirmación). |
+| `FOREGROUND_SERVICE(_SPECIAL_USE)`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED` | El guardia en segundo plano, su notificación y reactivarlo al encender. |
 
-## Instalación
+## Descarga
 
-1. Descarga el APK desde [Releases](https://github.com/EnMaNueL-G/AndroidSecurity/releases/latest)
-2. Activa "Instalar apps desconocidas" en Ajustes → Seguridad
-3. Abre el APK e instala
-4. Concede el permiso **"Acceso al uso de aplicaciones"** cuando se solicite (necesario para Guard e Historial)
+[**AndroidSecurity.apk**](https://github.com/EnMaNueL-G/AndroidSecurity/releases/latest/download/AndroidSecurity.apk) · Android 8 o superior.
 
----
-
-## Compilar desde el código fuente
+## Compilar
 
 ```bash
-git clone https://github.com/EnMaNueL-G/AndroidSecurity.git
-cd AndroidSecurity
 ./gradlew assembleRelease
 ```
 
-Requiere Android Studio Hedgehog (2023.1.1) o superior, JDK 17.
+JDK 17+ (el de Android Studio sirve). La firma se lee de `keystore.properties`, que no está en el repositorio;
+sin él se genera un APK sin firmar.
 
----
+## Apoya el proyecto
 
-## Permisos requeridos
+- **Binance Pay ID:** `1165745950`
+- **USDT (BSC · BEP-20):** `0xb6f6731a4ea87f8e1fd6f44f48b5bc4204571f08`
 
-| Permiso | Motivo |
-|---------|--------|
-| `QUERY_ALL_PACKAGES` | Listar todas las apps instaladas |
-| `PACKAGE_USAGE_STATS` | Leer historial de accesos a cámara/micrófono (AppOps) |
-| `POST_NOTIFICATIONS` | Notificación del servicio Guard en segundo plano |
-| `FOREGROUND_SERVICE` | Mantener el Guard activo con notificación persistente |
+Solo son válidos estos datos.
 
----
-
-## Changelog
-
-### v1.0.0 — 2026-06-07
-- Primera versión pública
-- Auditor de permisos con clasificación de riesgo
-- Detector de amenazas: accesibilidad, device admin, combos peligrosos
-- Guard de cámara/micrófono con historial de 30 días
-- Historial de accesos con filtro de tiempo
-- Multiidioma: es / en / pt / fr / de
-- Servicio en segundo plano `CamMicGuardService`
-
----
-
-## Parte de OptiSuite
-
-AndroidSecurity es parte del ecosistema [OptiSuite](https://optisuite.app) — herramientas gratuitas de optimización y seguridad.
-
----
-
-## Licencia
-
-MIT © [EnMaNueL-G](https://github.com/EnMaNueL-G)
+— Web: **https://optisuite.app** · Soporte: **support@optisuite.app**
